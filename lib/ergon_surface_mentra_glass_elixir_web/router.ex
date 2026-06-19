@@ -17,11 +17,20 @@ defmodule ErgonSurfaceMentraGlassElixirWeb.Router do
   scope "/", ErgonSurfaceMentraGlassElixirWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
+    live "/", HUDLive
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", ErgonSurfaceMentraGlassElixirWeb do
-  #   pipe_through :api
-  # end
+  scope "/api", ErgonSurfaceMentraGlassElixirWeb do
+    pipe_through :api
+
+    get "/health", APIController, :health
+    get "/debug", APIController, :debug
+    get "/app.json", APIController, :app_json
+  end
+
+  # Fallback route for app.json at root level
+  scope "/", ErgonSurfaceMentraGlassElixirWeb do
+    pipe_through :api
+    get "/app.json", APIController, :app_json
+  end
 end
