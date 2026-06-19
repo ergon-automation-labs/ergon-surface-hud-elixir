@@ -12,7 +12,8 @@ defmodule ErgonSurfaceMentraGlassElixirWeb.APIController do
       environment: %{
         port: System.get_env("PORT", "3000"),
         package_name: System.get_env("PACKAGE_NAME", "com.ergon.mentra-glass"),
-        mentra_os_api_key: if(System.get_env("MENTRA_OS_API_KEY"), do: "***set***", else: "***missing***"),
+        mentra_os_api_key:
+          if(System.get_env("MENTRA_OS_API_KEY"), do: "***set***", else: "***missing***"),
         nats_host: System.get_env("NATS_HOST", "localhost"),
         nats_port: System.get_env("NATS_PORT", "4222")
       },
@@ -30,14 +31,21 @@ defmodule ErgonSurfaceMentraGlassElixirWeb.APIController do
       name: "mentra-glass",
       packageName: System.get_env("PACKAGE_NAME", "com.ergon.mentra-glass"),
       displayName: "Mentra Glass",
-      version: "0.1.0",
+      version: "0.2.7",
       description: "Direct AI interaction with Bot Army — Real-time HUD with chat",
+      author: %{
+        name: "Bot Army",
+        website: "https://botarmy.ai"
+      },
       webview: %{
         url: "/webview",
         width: 700,
         height: 900
       },
-      permissions: ["network"]
+      permissions: ["network"],
+      settings: %{
+        apiKey: System.get_env("MENTRA_OS_API_KEY", "")
+      }
     })
   end
 end
