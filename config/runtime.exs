@@ -43,14 +43,12 @@ if config_env() == :prod do
          :dns_cluster_query,
          System.get_env("DNS_CLUSTER_QUERY")
 
+  # For development with self-signed certs, use HTTP instead of HTTPS
+  # MentraOS will handle the protocol automatically based on Server URL in console
   config :ergon_surface_mentra_glass_elixir, ErgonSurfaceMentraGlassElixirWeb.Endpoint,
-    url: [host: host, port: 50000, scheme: "https"],
-    http: false,
-    https: [
+    url: [host: host, port: 50000, scheme: "http"],
+    http: [
       port: String.to_integer(System.get_env("PORT", "50000")),
-      cipher_suite: :compatible,
-      keyfile: "/opt/homebrew/etc/nginx/ssl/mentra-glass.key",
-      certfile: "/opt/homebrew/etc/nginx/ssl/mentra-glass.crt",
       ip: {0, 0, 0, 0, 0, 0, 0, 0}
     ],
     secret_key_base: secret_key_base
