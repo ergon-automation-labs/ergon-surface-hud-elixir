@@ -5,24 +5,37 @@ defmodule ErgonSurfaceMentraGlassElixir.NATS do
     host = System.get_env("NATS_HOST", "localhost")
     port = String.to_integer(System.get_env("NATS_PORT", "4222"))
 
+    # Use Task with timeout to prevent hanging
+    task = Task.async(fn -> do_query_bridge(host, port, message) end)
+
+    case Task.yield(task, 5000) do
+      {:ok, result} ->
+        result
+
+      nil ->
+        Task.shutdown(task, :brutal_kill)
+        Logger.error("NATS query timeout")
+        mock_response(message)
+    end
+  end
+
+  defp do_query_bridge(host, port, message) do
     try do
-      {:ok, nc} = Gnat.start_link(host: host, port: port, timeout: 5000)
+      {:ok, nc} = Gnat.start_link(host: host, port: port)
 
       payload = Jason.encode!(%{query: message})
 
-      case Gnat.request(nc, "bridge.chat", payload, timeout: 5000) do
+      case Gnat.request(nc, "bridge.chat", payload, timeout: 3000) do
         {:ok, response} ->
           {:ok, Jason.decode!(response.body)}
 
         {:error, reason} ->
           Logger.error("NATS request error: #{inspect(reason)}")
-          # Fallback mock response when bridge.chat isn't available
           mock_response(message)
       end
     rescue
       e ->
         Logger.error("NATS error: #{inspect(e)}")
-        # Fallback mock response on connection failure
         mock_response(message)
     end
   end
