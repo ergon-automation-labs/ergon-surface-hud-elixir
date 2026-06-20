@@ -4,7 +4,7 @@ defmodule ErgonSurfaceMentraGlassElixir.MixProject do
   def project do
     [
       app: :ergon_surface_mentra_glass_elixir,
-      version: "0.3.0",
+      version: "0.3.1",
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,

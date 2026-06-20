@@ -31,6 +31,34 @@ defmodule ErgonSurfaceMentraGlassElixirWeb.Router do
     get "/app.json", APIController, :app_json
   end
 
+  # Bot API endpoints
+  scope "/api/bots", ErgonSurfaceMentraGlassElixirWeb do
+    pipe_through :api
+
+    # Dashboard endpoints
+    get "/status", BotDashboardController, :status
+    get "/health", BotDashboardController, :health
+    get "/list", BotDashboardController, :bots
+    get "/updates", BotDashboardController, :updates
+
+    # Chat endpoints
+    post "/chat", BotChatController, :send_message
+    get "/chat/query", BotChatController, :query
+    get "/chat/history", BotChatController, :history
+
+    # Control endpoints
+    post "/restart", BotControlController, :restart_bot
+    post "/reload", BotControlController, :reload_bot
+    post "/refresh", BotControlController, :refresh_status
+    post "/clear-cache", BotControlController, :clear_cache
+    post "/execute", BotControlController, :execute_command
+
+    # Events endpoints
+    post "/events/update", BotEventsController, :post_update
+    post "/events/subscribe", BotEventsController, :subscribe
+    get "/events/health", BotEventsController, :health_check
+  end
+
   # Fallback route for app.json and app_config.json at root level
   scope "/", ErgonSurfaceMentraGlassElixirWeb do
     pipe_through :api
