@@ -290,10 +290,10 @@ defmodule ErgonSurfaceHudElixirWeb.OperationalLive do
           align-items: center;
         }
 
-        /* Content Area - splits context and chat vertically */
+        /* Content Area - splits context and chat horizontally (side by side) */
         .content-area {
           display: grid;
-          grid-template-rows: 1fr 1fr;
+          grid-template-columns: 1fr 1fr;
           gap: 1px;
           background: #0f172a;
           overflow: hidden;
@@ -305,7 +305,7 @@ defmodule ErgonSurfaceHudElixirWeb.OperationalLive do
           display: flex;
           flex-direction: column;
           overflow: hidden;
-          border-bottom: 1px solid #334155;
+          border-right: 1px solid #334155;
         }
 
         .panel-header {
@@ -486,7 +486,6 @@ defmodule ErgonSurfaceHudElixirWeb.OperationalLive do
 
           .main-grid {
             grid-template-columns: 1fr;
-            grid-template-rows: 1fr 1fr;
           }
 
           /* Hide sidebar on mobile, show abbreviated in marquee */
@@ -494,12 +493,14 @@ defmodule ErgonSurfaceHudElixirWeb.OperationalLive do
             display: none;
           }
 
+          /* Stack context and chat vertically on mobile */
           .content-area {
+            grid-template-columns: 1fr;
             grid-template-rows: 1fr 1fr;
-            grid-column: 1;
           }
 
           .task-context-panel {
+            border-right: none;
             border-bottom: 1px solid #334155;
           }
 
