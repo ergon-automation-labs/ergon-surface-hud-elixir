@@ -35,6 +35,7 @@ defmodule ErgonSurfaceHudElixirWeb.OperationalLive do
        messages: [],
        current_message: "",
        loading: false,
+       notifications: [],
        # Metrics
        productivity_score: 87,
        active_bots: 12,
@@ -143,6 +144,13 @@ defmodule ErgonSurfaceHudElixirWeb.OperationalLive do
           🎮 Operational
         </button>
         <button
+          class={"tab-btn #{if @active_tab == :notifications, do: "active"}"}
+          phx-click="select_tab"
+          phx-value-tab="notifications"
+        >
+          🔔 Notifications
+        </button>
+        <button
           class={"tab-btn #{if @active_tab == :dashboard, do: "active"}"}
           phx-click="select_tab"
           phx-value-tab="dashboard"
@@ -157,6 +165,28 @@ defmodule ErgonSurfaceHudElixirWeb.OperationalLive do
           ⚙️ Control
         </button>
       </div>
+      
+    <!-- Notifications Tab Content -->
+      <%= if @active_tab == :notifications do %>
+        <div class="tab-content notifications-tab">
+          <div class="notifications-header">
+            <h2>Bot Notifications</h2>
+            <%= if Enum.empty?(@notifications) do %>
+              <p class="no-notifications">No messages yet</p>
+            <% else %>
+              <div class="notifications-list">
+                <%= for notification <- Enum.reverse(@notifications) do %>
+                  <div class="notification-item">
+                    <div class="notification-time">{notification.timestamp}</div>
+                    <div class="notification-source">{notification.source}</div>
+                    <div class="notification-message">{notification.message}</div>
+                  </div>
+                <% end %>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
 
       <style>
         * {
@@ -587,6 +617,77 @@ defmodule ErgonSurfaceHudElixirWeb.OperationalLive do
             padding: 4px 8px;
           }
         }
+
+        /* Tab Content */
+        .tab-content {
+          display: none;
+          flex: 1;
+          overflow: hidden;
+          background: #1a1f35;
+        }
+
+        .tab-content.active {
+          display: flex;
+        }
+
+        /* Notifications Tab */
+        .notifications-tab {
+          flex-direction: column;
+          padding: 16px;
+        }
+
+        .notifications-header {
+          flex: 1;
+          overflow-y: auto;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .notifications-header h2 {
+          font-size: 14px;
+          margin-bottom: 12px;
+          color: #3b82f6;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .no-notifications {
+          color: #94a3b8;
+          text-align: center;
+          padding: 32px 16px;
+          font-size: 13px;
+        }
+
+        .notifications-list {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .notification-item {
+          padding: 12px;
+          background: #0f172a;
+          border-left: 3px solid #3b82f6;
+          border-radius: 4px;
+          font-size: 12px;
+        }
+
+        .notification-time {
+          color: #64748b;
+          font-size: 10px;
+          margin-bottom: 4px;
+        }
+
+        .notification-source {
+          color: #3b82f6;
+          font-weight: 600;
+          margin-bottom: 6px;
+        }
+
+        .notification-message {
+          color: #cbd5e1;
+          line-height: 1.5;
+        }
       </style>
     </div>
     """
@@ -735,6 +836,10 @@ defmodule ErgonSurfaceHudElixirWeb.OperationalLive do
 
   def handle_info({:task_update, _update}, socket) do
     {:noreply, socket}
+  end
+
+  def handle_info({:notification, notification}, socket) do
+    {:noreply, assign(socket, notifications: [notification | socket.assigns.notifications])}
   end
 
   defp send_chat_message(%{assigns: %{current_message: "", loading: true}} = socket) do

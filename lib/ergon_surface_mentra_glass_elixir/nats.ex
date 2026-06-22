@@ -2,27 +2,19 @@ defmodule ErgonSurfaceHudElixir.NATS do
   require Logger
 
   def query_bridge(message) do
-    # For now, return mock response immediately
-    # TODO: Integrate real NATS bridge.chat queries when available
-    Logger.info("Query (demo mode): #{message}")
-    mock_response(message)
-  end
-
-  def query_bridge_real(message) do
     host = System.get_env("NATS_HOST", "localhost")
     port = String.to_integer(System.get_env("NATS_PORT", "4222"))
 
     try do
       {:ok, nc} = Gnat.start_link(host: host, port: port, timeout: 5000)
-
       payload = Jason.encode!(%{query: message})
 
-      case Gnat.request(nc, "bridge.chat", payload, timeout: 5000) do
+      case Gnat.request(nc, "bridge.chat", payload, timeout: 10000) do
         {:ok, response} ->
           {:ok, Jason.decode!(response.body)}
 
         {:error, reason} ->
-          Logger.error("NATS request error: #{inspect(reason)}")
+          Logger.error("NATS bridge.chat error: #{inspect(reason)}")
           mock_response(message)
       end
     rescue
@@ -54,6 +46,7 @@ defmodule ErgonSurfaceHudElixir.NATS do
       try do
         {:ok, nc} = Gnat.start_link(host: host, port: port)
         {:ok, _sub} = Gnat.subscribe(nc, "bot_army.task.updated")
+        {:ok, _sub} = Gnat.subscribe(nc, "bot_army.notification.*")
 
         listen_for_updates(nc, pid)
       rescue
@@ -67,18 +60,29 @@ defmodule ErgonSurfaceHudElixir.NATS do
 
   defp listen_for_updates(nc, pid) do
     receive do
-      {:msg, _sub, msg} ->
+      {:msg, sub, msg} ->
         try do
           data = Jason.decode!(msg.body)
+          subject = sub.topic
 
-          update = %{
-            agent: data["agent"] || "agent",
-            message: data["description"] || "Update",
-            status: data["status"] || "info",
-            timestamp: DateTime.utc_now() |> DateTime.to_iso8601()
-          }
+          if String.contains?(subject, "notification") do
+            notification = %{
+              source: data["source"] || data["bot"] || "Unknown",
+              message: data["message"] || data["text"] || "",
+              timestamp: format_timestamp()
+            }
 
-          send(pid, {:task_update, update})
+            send(pid, {:notification, notification})
+          else
+            update = %{
+              agent: data["agent"] || "agent",
+              message: data["description"] || "Update",
+              status: data["status"] || "info",
+              timestamp: format_timestamp()
+            }
+
+            send(pid, {:task_update, update})
+          end
         rescue
           _ -> :ok
         end
@@ -94,5 +98,12 @@ defmodule ErgonSurfaceHudElixir.NATS do
   rescue
     _ ->
       Logger.error("Listen error, stopping updates")
+  end
+
+  defp format_timestamp do
+    DateTime.utc_now()
+    |> DateTime.to_time()
+    |> Time.to_string()
+    |> String.slice(0..7)
   end
 end
