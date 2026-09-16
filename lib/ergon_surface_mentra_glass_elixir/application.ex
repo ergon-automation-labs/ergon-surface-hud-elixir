@@ -13,6 +13,16 @@ defmodule ErgonSurfaceHudElixir.Application do
        query:
          Application.get_env(:ergon_surface_mentra_glass_elixir, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: ErgonSurfaceHudElixir.PubSub},
+      {Gnat.ConnectionPool,
+       [
+         name: :hud_nats,
+         servers: [
+           %{
+             host: System.get_env("NATS_HOST", "localhost"),
+             port: String.to_integer(System.get_env("NATS_PORT", "4222"))
+           }
+         ]
+       ]},
       # Start a worker by calling: ErgonSurfaceHudElixir.Worker.start_link(arg)
       # {ErgonSurfaceHudElixir.Worker, arg},
       # Start to serve requests, typically the last entry

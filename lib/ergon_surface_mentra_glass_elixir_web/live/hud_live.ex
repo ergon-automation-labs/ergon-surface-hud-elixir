@@ -13,16 +13,117 @@ defmodule ErgonSurfaceHudElixirWeb.HUDLive do
        loading: false,
        system_status: %{nats: "healthy", db: "healthy"},
        bots: [],
-       task_updates: []
+       task_updates: [],
+       fitness_signal: nil,
+       gtd_signal: nil,
+       active_modal: nil,
+       fitness_tasks: [],
+       gtd_tasks: %{blocked: [], due: []}
      )
-     |> subscribe_to_updates()}
+     |> subscribe_to_updates()
+     |> fetch_fitness_data()
+     |> fetch_gtd_data()}
+  end
+
+  defp fetch_fitness_data(socket) do
+    Task.start_link(fn ->
+      try do
+        case Gnat.request(:hud_nats, "fitness.status", "{}", timeout: 5000) do
+          {:ok, %{body: body}} ->
+            case Jason.decode(body) do
+              {:ok, data} ->
+                signal = data["has_upcoming"] || false
+
+                send(
+                  self(),
+                  {:fitness_update,
+                   %{signal: signal, message: data["message"] || "Time to work out!"}}
+                )
+
+              {:error, _} ->
+                send(self(), {:fitness_update, %{signal: false, message: nil}})
+            end
+
+          {:error, _} ->
+            send(self(), {:fitness_update, %{signal: false, message: nil}})
+        end
+      rescue
+        _ -> send(self(), {:fitness_update, %{signal: false, message: nil}})
+      end
+    end)
+
+    socket
+  end
+
+  defp fetch_gtd_data(socket) do
+    Task.start_link(fn ->
+      try do
+        case Gnat.request(:hud_nats, "gtd.task.list", Jason.encode!(%{filter: "status"}),
+               timeout: 5000
+             ) do
+          {:ok, %{body: body}} ->
+            case Jason.decode(body) do
+              {:ok, data} ->
+                tasks = data["tasks"] || []
+
+                blocked =
+                  Enum.filter(tasks, &(&1["status"] == "blocked")) |> Enum.map(&format_task/1)
+
+                due = Enum.filter(tasks, &(&1["status"] == "due")) |> Enum.map(&format_task/1)
+                send(self(), {:gtd_update, %{blocked: blocked, due: due}})
+
+              {:error, _} ->
+                send(self(), {:gtd_update, %{blocked: [], due: []}})
+            end
+
+          {:error, _} ->
+            send(self(), {:gtd_update, %{blocked: [], due: []}})
+        end
+      rescue
+        _ -> send(self(), {:gtd_update, %{blocked: [], due: []}})
+      end
+    end)
+
+    socket
+  end
+
+  defp format_task(task) do
+    %{
+      id: task["id"] || task["title"],
+      title: task["title"],
+      time: task["time_label"] || "no due date"
+    }
   end
 
   @impl true
   def render(assigns) do
     ~H"""
     <div class="hud">
-      <!-- Status Panel -->
+      <!-- Status Bar -->
+      <div class="status-bar">
+        <button
+          phx-click="show-modal"
+          phx-value-modal="fitness"
+          class={["status-bar-button", if(@fitness_signal, do: "active", else: "")]}
+        >
+          <span class="icon">🏃</span>
+          <span class="label">{if @fitness_signal, do: "Work out?", else: ""}</span>
+        </button>
+
+        <button
+          phx-click="show-modal"
+          phx-value-modal="gtd"
+          class={["status-bar-button", if(@gtd_signal, do: "active", else: "")]}
+        >
+          <span class="icon">📋</span>
+          <span class="label">{if @gtd_signal, do: "Tasks", else: ""}</span>
+        </button>
+
+        <div class="status-bar-spacer"></div>
+        <span class="status-bar-time">{DateTime.utc_now() |> Calendar.strftime("%H:%M")}</span>
+      </div>
+      
+    <!-- Status Panel -->
       <div class="status-panel">
         <div class="panel-header">Bot Army Status</div>
         <div class="panel-content">
@@ -54,6 +155,82 @@ defmodule ErgonSurfaceHudElixirWeb.HUDLive do
           </div>
         </div>
       </div>
+      
+    <!-- Fitness Modal -->
+      <%= if @active_modal == "fitness" do %>
+        <div class="modal-overlay" phx-click="close-modal">
+          <div class="modal-content" phx-click="stop-propagation">
+            <div class="modal-header">
+              <h3>Log Workout</h3>
+              <button class="modal-close" phx-click="close-modal">×</button>
+            </div>
+            <form phx-submit="log-workout" class="modal-form">
+              <div class="form-group">
+                <label>Type</label>
+                <input type="text" name="workout_type" placeholder="e.g. run, lift, yoga" required />
+              </div>
+              <div class="form-group">
+                <label>Duration (min)</label>
+                <input type="number" name="duration" placeholder="30" min="1" required />
+              </div>
+              <div class="form-group">
+                <label>Notes</label>
+                <textarea name="notes" placeholder="How did it feel?" rows="3"></textarea>
+              </div>
+              <button type="submit" class="modal-submit">Log It</button>
+            </form>
+          </div>
+        </div>
+      <% end %>
+      
+    <!-- GTD Modal -->
+      <%= if @active_modal == "gtd" do %>
+        <div class="modal-overlay" phx-click="close-modal">
+          <div class="modal-content" phx-click="stop-propagation">
+            <div class="modal-header">
+              <h3>Tasks</h3>
+              <button class="modal-close" phx-click="close-modal">×</button>
+            </div>
+            <div class="gtd-modal-body">
+              <div class="task-section">
+                <h4 class="section-title">🚫 Blocked</h4>
+                <div class="task-list">
+                  <%= if Enum.empty?(@gtd_tasks.blocked) do %>
+                    <div class="task-item empty">No blocked tasks</div>
+                  <% else %>
+                    <%= for task <- @gtd_tasks.blocked do %>
+                      <div class="task-item">
+                        <span class="task-title">{task.title}</span>
+                        <span class="task-meta">{task.time}</span>
+                      </div>
+                    <% end %>
+                  <% end %>
+                </div>
+              </div>
+
+              <div class="task-section">
+                <h4 class="section-title">📅 Due Soon</h4>
+                <div class="task-list">
+                  <%= if Enum.empty?(@gtd_tasks.due) do %>
+                    <div class="task-item empty">No due tasks</div>
+                  <% else %>
+                    <%= for task <- @gtd_tasks.due do %>
+                      <div
+                        class="task-item clickable"
+                        phx-click="work-on-task"
+                        phx-value-task={task.id || task.title}
+                      >
+                        <span class="task-title">{task.title}</span>
+                        <span class="task-meta">{task.time}</span>
+                      </div>
+                    <% end %>
+                  <% end %>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      <% end %>
       
     <!-- Chat Panel -->
       <div class="chat-panel">
@@ -88,10 +265,236 @@ defmodule ErgonSurfaceHudElixirWeb.HUDLive do
         width: 100%;
         height: 100vh;
         display: grid;
+        grid-template-rows: auto 1fr;
         grid-template-columns: 1.5fr 1fr;
         gap: 1px;
         background: #0f172a;
         padding: 1px;
+      }
+
+      .status-bar {
+        grid-column: 1 / -1;
+        background: #1a2332;
+        border-bottom: 1px solid #3b82f6;
+        padding: 8px 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .status-bar-button {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 12px;
+        background: transparent;
+        border: none;
+        border-radius: 4px;
+        color: #64748b;
+        cursor: pointer;
+        font-size: 12px;
+        transition: all 0.2s ease;
+      }
+
+      .status-bar-button:hover {
+        color: #94a3b8;
+      }
+
+      .status-bar-button.active {
+        background: rgba(34, 197, 94, 0.2);
+        color: #86efac;
+        border: 1px solid #22c55e;
+      }
+
+      .status-bar-button .icon {
+        font-size: 16px;
+      }
+
+      .status-bar-button .label {
+        font-size: 11px;
+        font-weight: 500;
+      }
+
+      .status-bar-spacer {
+        flex: 1;
+      }
+
+      .status-bar-time {
+        font-size: 11px;
+        color: #64748b;
+      }
+
+      .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+      }
+
+      .modal-content {
+        background: #1a2332;
+        border: 1px solid #3b82f6;
+        border-radius: 8px;
+        padding: 24px;
+        max-width: 400px;
+        width: 90%;
+        box-shadow: 0 20px 25px rgba(0, 0, 0, 0.5);
+      }
+
+      .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        border-bottom: 1px solid #334155;
+        padding-bottom: 12px;
+      }
+
+      .modal-header h3 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 600;
+        color: #e2e8f0;
+      }
+
+      .modal-close {
+        background: none;
+        border: none;
+        color: #94a3b8;
+        font-size: 24px;
+        cursor: pointer;
+        padding: 0;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .modal-close:hover {
+        color: #cbd5e1;
+      }
+
+      .modal-form {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .form-group label {
+        font-size: 12px;
+        font-weight: 600;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .form-group input,
+      .form-group textarea {
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 4px;
+        color: #e2e8f0;
+        padding: 8px 12px;
+        font-family: inherit;
+        font-size: 14px;
+      }
+
+      .form-group input:focus,
+      .form-group textarea:focus {
+        outline: none;
+        border-color: #3b82f6;
+        background: #1a2332;
+      }
+
+      .modal-submit {
+        background: #3b82f6;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        padding: 10px 16px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        margin-top: 8px;
+      }
+
+      .modal-submit:hover {
+        background: #2563eb;
+      }
+
+      .gtd-modal-body {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        max-height: 500px;
+        overflow-y: auto;
+      }
+
+      .task-section {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .section-title {
+        margin: 0;
+        font-size: 12px;
+        font-weight: 700;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .task-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .task-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 12px;
+        background: #0f172a;
+        border-left: 2px solid #334155;
+        border-radius: 2px;
+        font-size: 13px;
+      }
+
+      .task-item.clickable {
+        border-left-color: #3b82f6;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .task-item.clickable:hover {
+        background: #1a2332;
+        border-left-color: #60a5fa;
+      }
+
+      .task-title {
+        color: #e2e8f0;
+        font-weight: 500;
+      }
+
+      .task-meta {
+        color: #64748b;
+        font-size: 11px;
       }
 
       .status-panel {
@@ -317,6 +720,134 @@ defmodule ErgonSurfaceHudElixirWeb.HUDLive do
     send_chat_message(socket)
   end
 
+  def handle_event("show-modal", %{"modal" => modal_type}, socket) do
+    {:noreply, assign(socket, :active_modal, modal_type)}
+  end
+
+  def handle_event("close-modal", _params, socket) do
+    {:noreply, assign(socket, :active_modal, nil)}
+  end
+
+  def handle_event("stop-propagation", _params, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event(
+        "log-workout",
+        %{"workout_type" => type, "duration" => duration, "notes" => notes},
+        socket
+      ) do
+    Task.start_link(fn ->
+      send_workout_log(type, duration, notes)
+    end)
+
+    # Close modal and show confirmation
+    socket
+    |> assign(:active_modal, nil)
+    |> assign(:fitness_signal, nil)
+    |> then(&{:noreply, &1})
+  end
+
+  def handle_event("work-on-task", %{"task" => task_id}, socket) do
+    Task.start_link(fn ->
+      send_gtd_task_start(task_id)
+    end)
+
+    # Close modal and focus on task
+    {:noreply, assign(socket, :active_modal, nil)}
+  end
+
+  defp send_workout_log(type, duration, notes) do
+    try do
+      body =
+        Jason.encode!(%{
+          "event_id" => Ecto.UUID.generate(),
+          "event" => "fitness.workout.log",
+          "schema_version" => "1.0",
+          "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601(),
+          "source" => "hud_surface",
+          "source_node" => "hud@localhost",
+          "triggered_by" => "hud_surface.user",
+          "payload" => %{
+            "workout_type" => type,
+            "duration_minutes" => String.to_integer(duration),
+            "notes" => notes
+          }
+        })
+
+      case Gnat.request(:hud_nats, "fitness.workout.log", body, timeout: 5000) do
+        {:ok, _response} ->
+          Logger.info("Workout logged successfully")
+
+        {:error, reason} ->
+          Logger.warning("Failed to log workout: #{inspect(reason)}")
+      end
+    rescue
+      e ->
+        Logger.error("Error logging workout: #{inspect(e)}")
+    end
+  end
+
+  defp send_gtd_task_start(task_id) do
+    try do
+      body =
+        Jason.encode!(%{
+          "event_id" => Ecto.UUID.generate(),
+          "event" => "gtd.task.work_on",
+          "schema_version" => "1.0",
+          "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601(),
+          "source" => "hud_surface",
+          "source_node" => "hud@localhost",
+          "triggered_by" => "hud_surface.user",
+          "payload" => %{
+            "task_id" => task_id
+          }
+        })
+
+      case Gnat.request(:hud_nats, "gtd.task.work_on", body, timeout: 5000) do
+        {:ok, response} ->
+          case Jason.decode(response.body) do
+            {:ok, data} ->
+              Logger.info("Task started: #{data["title"]}")
+
+            {:error, _} ->
+              Logger.info("Task started: #{task_id}")
+          end
+
+        {:error, reason} ->
+          Logger.warning("Failed to start task: #{inspect(reason)}")
+      end
+    rescue
+      e ->
+        Logger.error("Error starting task: #{inspect(e)}")
+    end
+  end
+
+  @impl true
+  def handle_info({:fitness_update, data}, socket) do
+    {:noreply,
+     socket
+     |> assign(:fitness_signal, data.message)
+     |> assign(:fitness_tasks, [data])}
+  end
+
+  def handle_info({:gtd_update, data}, socket) do
+    {:noreply,
+     socket
+     |> assign(:gtd_signal, "#{Enum.count(data.due)} due")
+     |> assign(:gtd_tasks, data)}
+  end
+
+  def handle_info({:task_update, update}, socket) do
+    {:noreply,
+     socket
+     |> assign(task_updates: Enum.take([update | socket.assigns.task_updates], 10))}
+  end
+
+  def handle_info(_msg, socket) do
+    {:noreply, socket}
+  end
+
   defp send_chat_message(%{assigns: %{current_message: "", loading: true}} = socket) do
     {:noreply, socket}
   end
@@ -362,13 +893,6 @@ defmodule ErgonSurfaceHudElixirWeb.HUDLive do
          |> assign(loading: false)
          |> push_event("scroll_to_bottom", %{})}
     end
-  end
-
-  @impl true
-  def handle_info({:task_update, update}, socket) do
-    {:noreply,
-     socket
-     |> assign(task_updates: Enum.take([update | socket.assigns.task_updates], 10))}
   end
 
   defp subscribe_to_updates(socket) do
