@@ -20,6 +20,7 @@ defmodule ErgonSurfaceHudElixirWeb.Router do
     live "/", OperationalLive
     live "/webview", OperationalLive
     live "/tabs", TabsLive
+    live "/fitness-handheld", FitnessHandheldLive
   end
 
   scope "/api", ErgonSurfaceHudElixirWeb do
