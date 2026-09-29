@@ -9,7 +9,7 @@ help:
 	@echo ""
 	@echo "Development:"
 	@echo "  make deps    - mix deps.get"
-	@echo "  make run     - mix run --no-halt (PORT via env or config default)"
+	@echo "  make run     - Start Phoenix dev server (mix phx.server)"
 	@echo "  make clean   - mix clean"
 	@echo ""
 	@echo "Docker (for multi-app bundling):"
@@ -35,8 +35,15 @@ init:
 deps:
 	mix deps.get
 
-run: deps
-	mix run --no-halt
+compile:
+	mix compile
+
+test:
+	mix test
+
+run: deps compile
+	@echo "Starting Phoenix dev server..."
+	mix phx.server
 
 clean:
 	mix clean
@@ -44,7 +51,13 @@ clean:
 release: deps
 	MIX_ENV=prod mix assets.deploy
 	MIX_ENV=prod mix release --overwrite
+	@scripts/prune_release_artifacts.sh --build-tree --apply
 	@echo "✓ Release built in _build/prod/rel/"
+
+prune-releases:
+	@scripts/prune_release_artifacts.sh $(if $(APPLY),--apply,)
+	@echo ""
+	@echo "  Dry run by default. Add APPLY=1 to delete:  make prune-releases APPLY=1"
 
 publish-release: release
 	@echo "Publishing to GitHub..."
