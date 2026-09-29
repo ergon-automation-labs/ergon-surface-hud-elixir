@@ -25,6 +25,13 @@ erl_crash.dump
 # Ignore package tarball (built via "mix hex.build").
 ergon_surface_mentra_glass_elixir-*.tar
 
+# Release tarballs. They are build artifacts — the copy anyone deploys is the
+# asset on the GitHub release — so a repo should never carry them in history.
+# This repo carries two name families: it was renamed from
+# ergon-surface-mentra_glass to ergon-surface-hud-elixir, and the older
+# releases' assets are still named after the old app.
+*.tar.gz
+
 # Ignore assets that are produced by build tools.
 /priv/static/assets/
 

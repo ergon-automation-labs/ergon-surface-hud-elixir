@@ -55,9 +55,12 @@ release: deps
 	@echo "✓ Release built in _build/prod/rel/"
 
 prune-releases:
-	@scripts/prune_release_artifacts.sh $(if $(APPLY),--apply,)
+	@scripts/prune_release_artifacts.sh --rel ergon_surface_mentra_glass_elixir $(if $(APPLY),--apply,)
 	@echo ""
 	@echo "  Dry run by default. Add APPLY=1 to delete:  make prune-releases APPLY=1"
+	@echo "  --rel adds the legacy name: this repo was renamed from mentra_glass to hud,"
+	@echo "  so it still holds tarballs of both names. Versions increase across the rename,"
+	@echo "  so the newest three overall is the right cut — older ones are on GitHub releases."
 
 publish-release: release
 	@echo "Publishing to GitHub..."
